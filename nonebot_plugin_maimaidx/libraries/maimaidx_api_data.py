@@ -5,7 +5,7 @@ import httpx
 from ..config import UUID, maiconfig
 from .maimaidx_error import *
 from .maimaidx_model import *
-from ...nonebot_plugin_maimai.database import Database
+from ...nonebot_plugin_maipytools.database import Database # maipytools插件的用户数据库
 db = Database()
 
 class MaimaiAPI:
