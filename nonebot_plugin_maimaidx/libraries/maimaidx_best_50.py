@@ -12,32 +12,41 @@ from .maimaidx_api_data import maiApi
 from .maimaidx_error import *
 from .maimaidx_model import ChartInfo, PlayInfoDefault, PlayInfoDev, UserInfo
 from .maimaidx_music import mai
+import logging
 
 
 class ScoreBaseImage:
     
-    text_color = (124, 129, 255, 255)
+    # 修改文本颜色为更高对比度的深蓝色
+    text_color = (70, 80, 200, 255)  
+    
+    # 修改标题文字颜色为深色系，提高可读性
     t_color = [
-        (255, 255, 255, 255), 
-        (255, 255, 255, 255), 
-        (255, 255, 255, 255), 
-        (255, 255, 255, 255), 
-        (138, 0, 226, 255)
+        (255, 255, 255, 255),  # BASIC - 
+        (255, 255, 255, 255),  # ADVANCED - 
+        (255, 255, 255, 255),  # EXPERT - 
+        (255, 255, 255, 255),  # MASTER - 
+        (80, 0, 150, 255)    # Re:MASTER - 
     ]
+    
+    # 修改ID文字颜色为更高对比度的颜色
     id_color = [
-        (129, 217, 85, 255), 
-        (245, 189, 21, 255),  
-        (255, 129, 141, 255), 
-        (159, 81, 220, 255),
-        (138, 0, 226, 255)
+        (0, 150, 0, 255),     # BASIC - 深绿色
+        (200, 120, 0, 255),    # ADVANCED - 深橙色
+        (180, 0, 0, 255),      # EXPERT - 深红色
+        (120, 0, 200, 255),    # MASTER - 深紫色
+        (80, 0, 150, 255)      # Re:MASTER - 更深紫色
     ]
+    
+    # 调整背景色，降低亮度提高对比度
     bg_color = [
-        (111, 212, 61, 255), 
-        (248, 183, 9, 255), 
-        (255, 129, 141, 255), 
-        (159, 81, 220, 255), 
-        (219, 170, 255, 255)
+        (180, 255, 180, 255),  # BASIC - 浅绿色
+        (255, 220, 120, 255),  # ADVANCED - 浅橙色
+        (255, 180, 180, 255),  # EXPERT - 浅红色
+        (220, 180, 255, 255),  # MASTER - 浅紫色
+        (200, 150, 255, 255)   # Re:MASTER - 中等紫色
     ]
+    
     id_diff = [Image.new('RGBA', (55, 10), color) for color in bg_color]
     
     _diff = []
@@ -53,6 +62,7 @@ class ScoreBaseImage:
 
     @classmethod
     def _load_image(cls):
+        # 使用新的背景图片或保持原样
         cls._diff = [
             Image.open(maimaidir / 'b50_score_basic.png'), 
             Image.open(maimaidir / 'b50_score_advanced.png'), 
@@ -67,6 +77,7 @@ class ScoreBaseImage:
             Image.open(maimaidir / 'rise_score_master.png'),
             Image.open(maimaidir / 'rise_score_remaster.png')
         ]
+        # 其他背景图保持不变
         cls.title_bg = Image.open(maimaidir / 'title.png')
         cls.title_lengthen_bg = Image.open(maimaidir / 'title-lengthen.png')
         cls.design_bg = Image.open(maimaidir / 'design.png')
@@ -75,7 +86,7 @@ class ScoreBaseImage:
         cls.pattern_bg = Image.open(maimaidir / 'pattern.png')
         cls.rainbow_bg = Image.open(maimaidir / 'rainbow.png').convert('RGBA')
         cls.rainbow_bottom_bg = Image.open(maimaidir / 'rainbow_bottom.png').convert('RGBA').resize((1200, 200))
-    
+
     def __init__(self, image: Image.Image = None) -> None:
         if not maiconfig.saveinmem:
             self._load_image()
@@ -408,6 +419,125 @@ def computeRa(
     return data
 
 
+# ==== Maipy接口适配相关映射表和处理函数 ====
+FC_TYPE_MAP = {
+    0: 'app',
+    1: 'ap',
+    2: 'fcp',
+    3: 'fc',
+    None: ''
+}
+
+FS_TYPE_MAP = {
+    0: 'sync',
+    1: 'fs',
+    2: 'fsp',
+    3: 'fsd',
+    4: 'fsdp',
+    None: ''
+}
+
+RATE_TYPE_MAP = {
+    0: 'SSSp',
+    1: 'SSS',
+    2: 'SSp',
+    3: 'SS',
+    4: 'Sp',
+    5: 'S',
+    6: 'AAA',
+    7: 'AA',
+    8: 'A',
+    9: 'BBB',
+    10: 'BB',
+    11: 'B',
+    12: 'C',
+    13: 'D',
+    None: ''
+}
+
+SONG_TYPE_MAP = {
+    'standard': 'SD',
+    'dx': 'DX',
+    None: 'SD'
+}
+
+def process_song_id(song_id: str, song_type: str = None) -> str:
+    """
+    处理歌曲ID
+    - 如果是DX曲且ID是3位数，则在开头加10
+    - 如果是4位数，则在开头加1
+    """
+    if song_type and song_type.lower() == 'dx' and len(song_id) == 3:
+        return f"10{song_id}"
+    elif len(song_id) == 4:
+        return f"1{song_id}"
+    return song_id
+
+def format_maipy_b50_data(arcade_obj, user_info, username):
+    """
+    将Maipy接口返回的数据格式化为UserInfo结构
+    """
+    # diffs 需从全局获取
+    global diffs
+    if 'diffs' not in globals():
+        from .maimaidx_music import diffs
+    # 组装数据
+    obj = {
+        'additional_rating': arcade_obj.get('additional_rating', 0),
+        'nickname': user_info.get('name', username),
+        'plate': arcade_obj.get('plate', ''),
+        'rating': arcade_obj.get('rating', 0),
+        'username': user_info.get('name', username),
+        'charts': {
+            'sd': [],
+            'dx': []
+        }
+    }
+    # 处理b35
+    for record in arcade_obj.get('scores_b35', []):
+        song_type = record.get('type')
+        song_id = str(record.get('id', 0))
+        chart = {
+            'achievements': float(record.get('achievements', 0)),
+            'ds': float(record.get('level_value', 0)),
+            'dxScore': int(record.get('dx_score', 0)),
+            'fc': FC_TYPE_MAP.get(record.get('fc'), ''),
+            'fs': FS_TYPE_MAP.get(record.get('fs'), ''),
+            'level': str(record.get('level', '')),
+            'level_index': int(record.get('level_index', 0)),
+            'level_label': diffs[int(record.get('level_index', 0))],
+            'ra': int(record.get('dx_rating', 0)),
+            'rate': RATE_TYPE_MAP.get(record.get('rate'), ''),
+            'song_id': process_song_id(song_id, song_type),
+            'title': record.get('song_name', ''),
+            'type': SONG_TYPE_MAP.get(song_type, 'SD')
+        }
+        obj['charts']['sd'].append(chart)
+    # 处理b15
+    for record in arcade_obj.get('scores_b15', []):
+        song_type = record.get('type')
+        song_id = str(record.get('id', 0))
+        chart = {
+            'achievements': float(record.get('achievements', 0)),
+            'ds': float(record.get('level_value', 0)),
+            'dxScore': int(record.get('dx_score', 0)),
+            'fc': FC_TYPE_MAP.get(record.get('fc'), ''),
+            'fs': FS_TYPE_MAP.get(record.get('fs'), ''),
+            'level': str(record.get('level', '')),
+            'level_index': int(record.get('level_index', 0)),
+            'level_label': diffs[int(record.get('level_index', 0))],
+            'ra': int(record.get('dx_rating', 0)),
+            'rate': RATE_TYPE_MAP.get(record.get('rate'), ''),
+            'song_id': process_song_id(song_id, song_type),
+            'title': record.get('song_name', ''),
+            'type': SONG_TYPE_MAP.get(song_type, 'SD')
+        }
+        obj['charts']['dx'].append(chart)
+    # 重新计算rating
+    obj['rating'] = sum(_d['ra'] for _d in obj['charts']['sd']) + sum(_d['ra'] for _d in obj['charts']['dx'])
+    return obj
+
+
 async def generate(qqid: Optional[int] = None, username: Optional[str] = None) -> Union[MessageSegment, str]:
     """
     生成b50
@@ -422,13 +552,34 @@ async def generate(qqid: Optional[int] = None, username: Optional[str] = None) -
     try:
         if username:
             qqid = None
+        # 优先尝试Maipy新接口
+        try:
+            log.info(f"[b50] 尝试使用Maipy新接口获取b50数据，qqid={qqid}, username={username}")
+            arcade_obj = await maiApi.query_user_arcade2(qqid=qqid)
+            log.info(f"[b50] Maipy arcade_obj: {arcade_obj}")
+            user_info = await maiApi.query_user_player(qqid=qqid)
+            log.info(f"[b50] Maipy user_info: {user_info}")
+            username_from_player = user_info.get('name', '') or (username if username else 'unknown')
+            obj = format_maipy_b50_data(arcade_obj, user_info, username_from_player)
+            log.info(f"[b50] 格式化后的Maipy数据: {obj}")
+            userinfo = UserInfo(**obj)
+            draw_best = DrawBest(userinfo, qqid)
+            msg = MessageSegment.image(image_to_base64(await draw_best.draw()))
+            log.info(f"[b50] 成功使用Maipy新接口生成b50图片")
+            return msg
+        except Exception as e:
+            log.warning(f"[b50] Maipy新接口调用失败: {e}\n{traceback.format_exc()}")
+            # 降级到原有接口
+            pass
+        log.info(f"[b50] 尝试使用旧接口获取b50数据，qqid={qqid}, username={username}")
         userinfo = await maiApi.query_user_b50(qqid=qqid, username=username)
         draw_best = DrawBest(userinfo, qqid)
-        
         msg = MessageSegment.image(image_to_base64(await draw_best.draw()))
+        log.info(f"[b50] 成功使用旧接口生成b50图片")
     except (UserNotFoundError, UserNotExistsError, UserDisabledQueryError) as e:
+        log.error(f"[b50] 用户相关错误: {e}")
         msg = str(e)
     except Exception as e:
-        log.error(traceback.format_exc())
+        log.error(f"[b50] 未知错误: {e}\n{traceback.format_exc()}")
         msg = f'未知错误：{type(e)}\n请联系Bot管理员'
     return msg

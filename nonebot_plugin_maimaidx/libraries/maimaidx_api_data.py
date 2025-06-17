@@ -1,11 +1,12 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List, Union
 
 import httpx
 
 from ..config import UUID, maiconfig
 from .maimaidx_error import *
 from .maimaidx_model import *
-
+from ...nonebot_plugin_maimai.database import Database
+db = Database()
 
 class MaimaiAPI:
     
@@ -15,6 +16,7 @@ class MaimaiAPI:
     MaiCover = 'https://www.diving-fish.com/covers'
     MaiAliasAPI = 'https://www.yuzuchan.moe/api/maimaidx'
     QQAPI = 'http://q1.qlogo.cn/g'
+    MaipyAPI = 'http://100.73.27.14:12345'
 
     def __init__(self) -> None:
         """封装Api"""
@@ -347,5 +349,81 @@ class MaimaiAPI:
             return None
         return res.content
 
+    async def _request(self, method: str, url: str, **kwargs) -> Any:
+        # 兼容旧版参数和多API类型
+        if 'timeout' not in kwargs:
+            kwargs['timeout'] = 5
+        session = httpx.AsyncClient(timeout=kwargs['timeout'])
+        res = await session.request(method, url, **kwargs)
+        data = None
+        if hasattr(self, 'MaiAPI') and self.MaiAPI in url:
+            if res.status_code == 200:
+                data = res.json()
+            elif res.status_code == 400:
+                raise UserNotFoundError
+            elif res.status_code == 403:
+                raise UserDisabledQueryError
+            else:
+                raise UnknownError
+        elif hasattr(self, 'MaiAliasAPI') and self.MaiAliasAPI in url:
+            if res.status_code == 200:
+                data = res.json()['content']
+            elif res.status_code == 400:
+                raise EnterError
+            elif res.status_code == 500:
+                raise ServerError
+            else:
+                raise UnknownError
+        elif hasattr(self, 'MaipyAPI') and self.MaipyAPI in url:
+            if res.status_code == 200:
+                data = res.json()
+            else:
+                raise UnknownError
+        elif hasattr(self, 'QQAPI') and self.QQAPI in url:
+            if res.status_code == 200:
+                data = res.content
+            else:
+                raise
+        await session.aclose()
+        return data
+
+    async def query_user_arcade(self, *, qqid: Optional[int] = None):
+        """
+        使用Maipy接口获取完整成绩
+        - `qqid`: 用户QQ
+        """
+        if not qqid:
+            raise UserNotFoundError
+        user_data = db.get_user_data(str(qqid))
+        if not user_data:
+            raise UserNotFoundError2
+        params = {'credentials': user_data.credentials}
+        return await self._request('GET', self.MaipyAPI + '/arcade/scores', params=params)
+
+    async def query_user_arcade2(self, *, qqid: Optional[int] = None):
+        """
+        使用Maipy接口获取b50
+        - `qqid`: 用户QQ
+        """
+        if not qqid:
+            raise UserNotFoundError
+        user_data = db.get_user_data(str(qqid))
+        if not user_data:
+            raise UserNotFoundError2
+        params = {'credentials': user_data.credentials}
+        return await self._request('GET', self.MaipyAPI + '/arcade/bests', params=params)
+
+    async def query_user_player(self, *, qqid: Optional[int] = None):
+        """
+        使用Maipy接口获取用户信息
+        - `qqid`: 用户QQ
+        """
+        if not qqid:
+            raise UserNotFoundError
+        user_data = db.get_user_data(str(qqid))
+        if not user_data:
+            raise UserNotFoundError2
+        params = {'credentials': user_data.credentials}
+        return await self._request('GET', self.MaipyAPI + '/arcade/players', params=params)
 
 maiApi = MaimaiAPI()

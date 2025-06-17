@@ -10,6 +10,10 @@ class UserNotFoundError(Exception):
             https://www.diving-fish.com/maimaidx/prober/
         ''').strip()
 
+class UserNotFoundError2(Exception):
+    
+    def __str__(self) -> str:
+        return '''未找到此玩家，请重试或发送 maibind 重新绑定'''
 
 class UserNotExistsError(Exception):
 
